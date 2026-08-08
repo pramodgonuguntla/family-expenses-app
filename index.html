@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Expenses</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0b1220" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-label" id="hero-label">Total balance</div>
+  <div id="networth" class="hero-amount">₹—</div>
+  <div id="hero-sub" class="hero-sub"></div>
+</header>
+
+<main id="app">
+
+  <!-- Level 1: group hero cards -->
+  <section id="view-accounts" class="view active">
+    <div id="group-list" class="group-list" style="margin-top: 16px;"></div>
+  </section>
+
+  <!-- Level 2: one group's accounts -->
+  <section id="view-group-detail" class="view">
+    <div class="detail-header">
+      <button class="back-btn" onclick="showView('view-accounts')">‹ Accounts</button>
+      <div class="detail-title">
+        <div class="name" id="group-detail-name">—</div>
+        <div class="amount" id="group-detail-amount">₹0</div>
+      </div>
+    </div>
+    <div id="group-accounts-list" class="card-list"></div>
+  </section>
+
+  <!-- Level 3: account month drill-down -->
+  <section id="view-account-detail" class="view">
+    <div class="detail-header">
+      <button class="back-btn" id="account-detail-back">‹ Back</button>
+      <div class="detail-title">
+        <div class="name" id="detail-account-name">—</div>
+        <div class="amount" id="detail-account-balance">₹0</div>
+      </div>
+    </div>
+    <div id="detail-months-list" class="card-list"></div>
+  </section>
+
+  <!-- Activity: this month total, category breakdown, 6-month trend -->
+  <section id="view-transactions" class="view">
+    <div class="section-head"><h2>This month</h2></div>
+    <div class="group-hero-card" style="cursor:default;">
+      <div class="body">
+        <div class="g-label" id="activity-month-label">—</div>
+        <div class="g-amount neg" id="activity-month-total">₹0</div>
+        <div class="g-sub" id="activity-month-sub"></div>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>By category</h2></div>
+    <div id="activity-category-list" class="card-list"></div>
+
+    <div class="section-head"><h2>Trend · last 6 months</h2></div>
+    <div id="activity-trend" class="trend-chart"></div>
+  </section>
+
+  <!-- Category drill-down: trend + selected month's transactions for one category -->
+  <section id="view-category-detail" class="view">
+    <div class="detail-header">
+      <button class="back-btn" onclick="showView('view-transactions')">‹ Activity</button>
+      <div class="detail-title">
+        <div class="name" style="display:flex; align-items:center; gap:10px;">
+          <span class="cat-icon" id="category-detail-icon" style="width:28px;height:28px;font-size:13px;cursor:default;"></span>
+          <span id="category-detail-label">—</span>
+        </div>
+        <div class="amount neg" id="category-detail-amount">₹0</div>
+      </div>
+    </div>
+    <div class="section-head" style="margin-top:0;"><h2>Trend · last 6 months</h2></div>
+    <div id="category-trend" class="trend-chart"></div>
+    <div class="section-head"><h2 id="category-txn-head">This month</h2></div>
+    <div id="category-txn-list" class="card-list"></div>
+  </section>
+
+  <!-- Summary: Accounts / Investments / Loans -->
+  <section id="view-summary" class="view">
+    <div class="section-head"><h2>Net worth</h2></div>
+    <div id="summary-hero-list" class="group-list"></div>
+  </section>
+
+  <!-- Investments: line items -->
+  <section id="view-investments-detail" class="view">
+    <div class="detail-header">
+      <button class="back-btn" onclick="showView('view-summary')">‹ Summary</button>
+      <div class="detail-title">
+        <div class="name">Investments</div>
+        <div class="amount" id="investments-detail-amount">₹0</div>
+      </div>
+    </div>
+    <div id="investments-list" class="card-list"></div>
+  </section>
+
+  <!-- Loans: line items -->
+  <section id="view-loans-detail" class="view">
+    <div class="detail-header">
+      <button class="back-btn" onclick="showView('view-summary')">‹ Summary</button>
+      <div class="detail-title">
+        <div class="name">Loans</div>
+        <div class="amount neg" id="loans-detail-amount">₹0</div>
+      </div>
+    </div>
+    <div id="loans-list" class="card-list"></div>
+  </section>
+
+</main>
+
+<button id="fab-add" class="fab" onclick="quickAdd()">+</button>
+
+<nav class="bottomnav">
+  <button class="nav-btn active" data-view="view-accounts" onclick="showView('view-accounts')">
+    <span class="nav-icon">◈</span><span>Accounts</span>
+  </button>
+  <button class="nav-btn" data-view="view-transactions" onclick="showView('view-transactions')">
+    <span class="nav-icon">≡</span><span>Activity</span>
+  </button>
+  <button class="nav-btn" data-view="view-summary" onclick="showView('view-summary')">
+    <span class="nav-icon">◔</span><span>Summary</span>
+  </button>
+</nav>
+
+<!-- Add/Edit transaction modal (spend / income / transfer) -->
+<div id="txn-modal" class="modal">
+  <div class="modal-card">
+    <h3 id="txn-modal-title">Add Transaction</h3>
+    <form id="txn-form">
+      <input type="hidden" id="txn-id" />
+      <input type="hidden" id="txn-orig-account" />
+
+      <div class="amount-entry">
+        <div class="toggle-group">
+          <button type="button" class="toggle-btn active" data-kind="spend" onclick="setTxnKind('spend')">Spend</button>
+          <button type="button" class="toggle-btn" data-kind="income" onclick="setTxnKind('income')">Income</button>
+          <button type="button" class="toggle-btn" data-kind="transfer" onclick="setTxnKind('transfer')">Transfer</button>
+        </div>
+        <input required type="number" step="0.01" min="0" id="txn-amount" placeholder="0" class="amount-input" />
+      </div>
+
+      <label>Details<input required type="text" id="txn-details" placeholder="e.g. Grocery, Salary" /></label>
+      <label id="txn-account-wrap">Account
+        <select required id="txn-account"></select>
+      </label>
+      <label id="txn-from-wrap" style="display:none">From account
+        <select id="txn-from-account"></select>
+      </label>
+      <label id="txn-to-wrap" style="display:none">To account
+        <select id="txn-to-account"></select>
+      </label>
+      <label id="txn-category-wrap">Category
+        <select id="txn-category"><option value="">Uncategorized</option></select>
+      </label>
+      <label>Date<input required type="date" id="txn-date" /></label>
+      <label>Note (optional)<input type="text" id="txn-note" /></label>
+      <div class="modal-actions">
+        <button type="button" id="txn-delete-btn" class="btn-danger" style="display:none" onclick="deleteCurrentTxn()">Delete</button>
+        <button type="button" class="btn-secondary" onclick="closeTxnForm()">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Shared modal: new group / new account / edit account / new+edit investment / new+edit loan -->
+<div id="edit-modal" class="modal">
+  <div class="modal-card">
+    <h3 id="modal-title">—</h3>
+    <form id="modal-form">
+      <label id="field-name-wrap">Name<input required type="text" id="field-name" /></label>
+      <label id="field-type-wrap">Type
+        <select id="field-type">
+          <option value="bank">Bank</option>
+          <option value="wallet">Wallet</option>
+          <option value="card">Card</option>
+        </select>
+      </label>
+      <label id="field-group-wrap">Group
+        <select id="field-group"></select>
+      </label>
+      <label id="field-category-wrap" style="display:none">Category
+        <select id="field-category"></select>
+      </label>
+      <label id="field-value-wrap" style="display:none"><span id="field-value-label">Value</span>
+        <input type="number" step="0.01" min="0" id="field-value" placeholder="0" />
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="modal-delete-btn" class="btn-danger" style="display:none" onclick="deleteCurrentKpiItem()">Delete</button>
+        <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Quick category picker bottom sheet -->
+<div id="category-modal" class="modal">
+  <div class="modal-card">
+    <h3>Categorize</h3>
+    <div id="category-txn-details" class="sub" style="margin-bottom:10px;"></div>
+    <div id="category-picker-list" class="picker-list"></div>
+    <div class="new-category-row">
+      <input type="text" id="new-category-name" placeholder="New category name" />
+      <select id="new-category-group">
+        <option>Monthly</option>
+        <option>Investments</option>
+        <option>Business</option>
+        <option>Insurance</option>
+        <option>Subscriptions</option>
+        <option>Donations</option>
+        <option>Income</option>
+        <option>Other</option>
+      </select>
+      <button type="button" class="btn-primary" onclick="createAndAssignCategory()">Add</button>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeCategoryPicker()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
