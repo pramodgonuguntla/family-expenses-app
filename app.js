@@ -518,46 +518,75 @@ async function createAndAssignCategory() {
 
 // ---------- Activity: category breakdown + trend ----------
 function renderActivity(selectedYm) {
-  // Transfers move money between our own accounts -- not real spend/income,
-  // excluded from both the category breakdown and the trend.
-  const all = allTxnsCache.filter((t) => t.category !== "Transfer");
+  // Every category is summed NET (credits offset debits), so a refund or a
+  // settlement coming back reduces that category instead of vanishing. Nothing
+  // is filtered out -- Transfer is included too, and should net to ~0; if it
+  // doesn't, that's a real data problem worth seeing rather than hiding.
+  const all = allTxnsCache;
   const todayYm = todayIso().slice(0, 7);
   const ym = selectedYm || todayYm;
   activitySelectedYm = ym;
 
   const monthTxns = all.filter((t) => monthKey(t.date) === ym);
-  const spend = monthTxns.filter((t) => t.amount < 0);
-  const totalSpend = spend.reduce((s, t) => s + Math.abs(t.amount), 0);
+
+  const byCat = {};
+  const countByCat = {};
+  monthTxns.forEach((t) => {
+    const c = t.category || "Uncategorized";
+    byCat[c] = (byCat[c] || 0) + t.amount;
+    countByCat[c] = (countByCat[c] || 0) + 1;
+  });
+
+  const cats = Object.keys(byCat).map((c) => ({ category: c, net: byCat[c], count: countByCat[c] }));
+  const spendCats = cats.filter((c) => c.net < 0).sort((a, b) => a.net - b.net);
+  const incomeCats = cats.filter((c) => c.net > 0).sort((a, b) => b.net - a.net);
+  const zeroCats = cats.filter((c) => c.net === 0).sort((a, b) => b.count - a.count);
+
+  const totalSpend = spendCats.reduce((s, c) => s + Math.abs(c.net), 0);
+  const totalIncome = incomeCats.reduce((s, c) => s + c.net, 0);
 
   document.getElementById("activity-month-label").textContent = monthLabelFromYm(ym);
   document.getElementById("activity-month-total").textContent = fmt(-totalSpend);
   document.getElementById("activity-month-sub").textContent =
-    spend.length + " expense" + (spend.length === 1 ? "" : "s") + (ym === todayYm ? " this month" : "");
+    totalIncome > 0
+      ? "net spend · " + fmt(totalIncome) + " income"
+      : "net spend" + (ym === todayYm ? " this month" : "");
 
-  const byCat = {};
-  spend.forEach((t) => { const c = t.category || "Uncategorized"; byCat[c] = (byCat[c] || 0) + Math.abs(t.amount); });
-  const cats = Object.keys(byCat).map((c) => ({ category: c, total: byCat[c] }));
-  cats.sort((a, b) => b.total - a.total);
-  const maxCat = cats.length ? cats[0].total : 1;
+  // Bar widths scale against the largest magnitude on the screen, so spend and
+  // income rows stay visually comparable.
+  const maxMag = Math.max.apply(null, cats.map((c) => Math.abs(c.net)).concat([1]));
 
-  const catList = document.getElementById("activity-category-list");
-  catList.innerHTML = "";
-  if (!cats.length) catList.innerHTML = `<div class="empty-state">No spend recorded in ${monthLabelFromYm(ym)}.</div>`;
-  cats.forEach((c) => {
-    const icon = catIcon(c.category);
-    const pct = Math.max(6, Math.round((c.total / maxCat) * 100));
-    const row = document.createElement("div");
-    row.className = "cat-bar-row";
-    row.innerHTML = `
-      <div class="top">
-        <div class="left"><div class="cat-icon" style="background:${icon.color}22">${icon.icon}</div><div class="name">${c.category}</div></div>
-        <div class="amount neg">${fmt(-c.total)}</div>
-      </div>
-      <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%; background:${icon.color}"></div></div>
-    `;
-    row.onclick = () => openCategoryDetail(c.category);
-    catList.appendChild(row);
-  });
+  function fillList(elId, headId, list, emptyMsg) {
+    const el = document.getElementById(elId);
+    const head = document.getElementById(headId);
+    el.innerHTML = "";
+    const show = list.length > 0 || !!emptyMsg;
+    head.style.display = show ? "" : "none";
+    el.style.display = show ? "" : "none";
+    if (!list.length) {
+      if (emptyMsg) el.innerHTML = `<div class="empty-state">${emptyMsg}</div>`;
+      return;
+    }
+    list.forEach((c) => {
+      const icon = catIcon(c.category);
+      const pct = Math.max(6, Math.round((Math.abs(c.net) / maxMag) * 100));
+      const row = document.createElement("div");
+      row.className = "cat-bar-row";
+      row.innerHTML = `
+        <div class="top">
+          <div class="left"><div class="cat-icon" style="background:${icon.color}22">${icon.icon}</div><div class="name">${c.category}</div></div>
+          <div class="amount ${c.net < 0 ? "neg" : "pos"}">${fmt(c.net)}</div>
+        </div>
+        <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%; background:${c.net > 0 ? "#12a06a" : icon.color}"></div></div>
+      `;
+      row.onclick = () => openCategoryDetail(c.category);
+      el.appendChild(row);
+    });
+  }
+
+  fillList("activity-category-list", "activity-spend-head", spendCats, `No spend recorded in ${monthLabelFromYm(ym)}.`);
+  fillList("activity-income-list", "activity-income-head", incomeCats, null);
+  fillList("activity-zero-list", "activity-zero-head", zeroCats, null);
 
   renderTrendChart(document.getElementById("activity-trend"), all, ym, (clickedYm) => renderActivity(clickedYm));
 }
@@ -571,11 +600,14 @@ function renderTrendChart(container, txns, selectedYm, onSelect) {
     const d = new Date(d0.getFullYear(), d0.getMonth() - i, 1);
     months.push(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"));
   }
-  const totalsByYm = {};
-  months.forEach((ym) => { totalsByYm[ym] = 0; });
+  // Net per month (credits offset debits), matching the category totals.
+  const netByYm = {};
+  months.forEach((ym) => { netByYm[ym] = 0; });
   txns.forEach((t) => {
-    if (t.amount < 0 && totalsByYm.hasOwnProperty(monthKey(t.date))) totalsByYm[monthKey(t.date)] += Math.abs(t.amount);
+    if (netByYm.hasOwnProperty(monthKey(t.date))) netByYm[monthKey(t.date)] += t.amount;
   });
+  const totalsByYm = {};
+  months.forEach((ym) => { totalsByYm[ym] = Math.abs(netByYm[ym]); });
   const maxTrend = Math.max.apply(null, months.map((ym) => totalsByYm[ym]).concat([1]));
 
   // With no spend at all, maxTrend falls back to 1 and every bar clamps to the
@@ -594,9 +626,11 @@ function renderTrendChart(container, txns, selectedYm, onSelect) {
     const isSelected = ym === selectedYm;
     const col = document.createElement("div");
     col.className = "trend-col" + (isSelected ? " selected" : "");
+    // Net-positive months (income exceeded spend) read green rather than dark.
+    const inflow = netByYm[ym] > 0;
     col.innerHTML = `
       <div class="trend-val">${val ? fmtShort(val) : ""}</div>
-      <div class="trend-bar-track"><div class="trend-bar${isSelected ? " current" : ""}" style="height:${barPx}px"></div></div>
+      <div class="trend-bar-track"><div class="trend-bar${isSelected ? " current" : ""}${inflow ? " inflow" : ""}" style="height:${barPx}px"></div></div>
       <div class="trend-label">${monthShortLabel(ym)}</div>
     `;
     col.onclick = () => { if (onSelect) onSelect(ym); };
@@ -612,22 +646,28 @@ function openCategoryDetail(category, selectedYm) {
 
   const icon = catIcon(category);
   const catTxns = allTxnsCache.filter((t) => t.category === category);
-  const monthSpend = catTxns.filter((t) => monthKey(t.date) === ym && t.amount < 0);
-  const total = monthSpend.reduce((s, t) => s + Math.abs(t.amount), 0);
+  // Both signs: credits belong to the category as much as debits do, and the
+  // header shows the net so a settlement coming back is visible.
+  const monthTxns = catTxns
+    .filter((t) => monthKey(t.date) === ym)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const net = monthTxns.reduce((s, t) => s + t.amount, 0);
 
   const iconEl = document.getElementById("category-detail-icon");
   iconEl.style.background = icon.color;
   iconEl.textContent = icon.icon;
   document.getElementById("category-detail-label").textContent = category;
-  document.getElementById("category-detail-amount").textContent = fmt(-total);
+  const amtEl = document.getElementById("category-detail-amount");
+  amtEl.textContent = fmt(net);
+  amtEl.className = "amount " + (net < 0 ? "neg" : "pos");
   document.getElementById("category-txn-head").textContent = monthLabelFromYm(ym);
 
   renderTrendChart(document.getElementById("category-trend"), catTxns, ym, (clickedYm) => openCategoryDetail(category, clickedYm));
 
   const list = document.getElementById("category-txn-list");
   list.innerHTML = "";
-  if (!monthSpend.length) list.innerHTML = `<div class="empty-state">No ${category} spend in ${monthLabelFromYm(ym)}.</div>`;
-  monthSpend.forEach((t) => list.appendChild(renderTxnRow(t, () => openCategoryDetail(category, ym))));
+  if (!monthTxns.length) list.innerHTML = `<div class="empty-state">No ${category} activity in ${monthLabelFromYm(ym)}.</div>`;
+  monthTxns.forEach((t) => list.appendChild(renderTxnRow(t, () => openCategoryDetail(category, ym))));
 
   showView("view-category-detail");
 }

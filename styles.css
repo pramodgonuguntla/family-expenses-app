@@ -153,6 +153,8 @@ body.detail-mode .hero { display: none; }
 .trend-bar-track { height: 86px; display: flex; align-items: flex-end; justify-content: center; width: 100%; }
 .trend-bar { width: 60%; max-width: 24px; border-radius: 6px 6px 2px 2px; background: #d7dae0; }
 .trend-bar.current { background: #14161f; }
+.trend-bar.inflow { background: #8fd9bd; }
+.trend-bar.inflow.current { background: #12a06a; }
 .trend-label { font-size: 10.5px; color: #8a8f9c; font-weight: 600; }
 .trend-col.selected .trend-label { color: #14161f; }
 /* Collapses the 86px-tall track to a message when there's nothing to plot,
