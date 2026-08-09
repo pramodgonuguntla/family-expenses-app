@@ -55,7 +55,10 @@
 
   <!-- Activity: this month total, category breakdown, 6-month trend -->
   <section id="view-transactions" class="view">
-    <div class="section-head"><h2>This month</h2></div>
+    <div class="section-head">
+      <h2>This month</h2>
+      <button class="icon-btn" id="category-menu-btn" type="button" title="Browse categories" aria-label="Browse all categories">☰</button>
+    </div>
     <div class="group-hero-card" style="cursor:default;">
       <div class="body">
         <div class="g-label" id="activity-month-label">—</div>
@@ -91,7 +94,13 @@
     </div>
     <div class="section-head" style="margin-top:0;"><h2>Trend · last 6 months</h2></div>
     <div id="category-trend" class="trend-chart"></div>
-    <div class="section-head"><h2 id="category-txn-head">This month</h2></div>
+    <div class="section-head">
+      <h2 id="category-txn-head">This month</h2>
+      <div class="sort-toggle">
+        <button type="button" class="sort-btn active" data-sort="date" onclick="setCategorySort('date')">Date</button>
+        <button type="button" class="sort-btn" data-sort="value" onclick="setCategorySort('value')">Value</button>
+      </div>
+    </div>
     <div id="category-txn-list" class="card-list"></div>
   </section>
 
@@ -214,6 +223,19 @@
 </div>
 
 <!-- Quick category picker bottom sheet -->
+<!-- Browse every category, including ones with no activity this month (which
+     therefore never appear in the Activity lists at all). -->
+<div id="category-menu-modal" class="modal">
+  <div class="modal-card">
+    <h3>Browse categories</h3>
+    <input type="text" id="category-menu-search" placeholder="Search…" autocomplete="off" />
+    <div id="category-menu-list" class="picker-list"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeCategoryMenu()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="category-modal" class="modal">
   <div class="modal-card">
     <h3>Categorize</h3>

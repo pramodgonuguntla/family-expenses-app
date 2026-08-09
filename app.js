@@ -668,6 +668,77 @@ function renderTrendChart(container, txns, selectedYm, onSelect) {
   });
 }
 
+// ---------- Browse-all-categories menu ----------
+// The Activity lists only render categories with activity in the selected
+// month, so a category that's quiet this month (Transfer netting 0 in Aug)
+// is unreachable. This lists every category regardless, and opens each at
+// its most recent month with actual activity.
+function latestYmWithActivity(category) {
+  let best = null;
+  allTxnsCache.forEach((t) => {
+    if ((t.category || "Uncategorized") !== category) return;
+    const ym = monthKey(t.date);
+    if (ym && (!best || ym > best)) best = ym;
+  });
+  return best;
+}
+
+function openCategoryMenu() {
+  renderCategoryMenu("");
+  const search = document.getElementById("category-menu-search");
+  search.value = "";
+  search.oninput = () => renderCategoryMenu(search.value);
+  document.getElementById("category-menu-modal").classList.add("open");
+}
+function closeCategoryMenu() {
+  document.getElementById("category-menu-modal").classList.remove("open");
+}
+
+function renderCategoryMenu(filter) {
+  const list = document.getElementById("category-menu-list");
+  list.innerHTML = "";
+  const q = (filter || "").trim().toLowerCase();
+
+  const counts = {};
+  allTxnsCache.forEach((t) => {
+    const c = t.category || "Uncategorized";
+    counts[c] = (counts[c] || 0) + 1;
+  });
+  const names = allCategories().map((c) => c.name);
+  ["Uncategorized"].concat(Object.keys(counts)).forEach((c) => {
+    if (names.indexOf(c) === -1) names.push(c);
+  });
+
+  const shown = names.filter((n) => !q || n.toLowerCase().indexOf(q) !== -1);
+  if (!shown.length) {
+    list.innerHTML = '<div class="empty-state">No matching category.</div>';
+    return;
+  }
+  shown.forEach((name) => {
+    const style = CATEGORY_GROUP_STYLE[categoryGroup(name)] || CATEGORY_GROUP_STYLE.Other;
+    const n = counts[name] || 0;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "picker-item";
+    btn.innerHTML = `<span class="picker-dot" style="background:${style.color}"></span>${name}` +
+      `<span class="picker-meta">${n ? n + (n === 1 ? " txn" : " txns") : "none"}</span>`;
+    btn.onclick = () => {
+      closeCategoryMenu();
+      openCategoryDetail(name, latestYmWithActivity(name) || undefined);
+    };
+    list.appendChild(btn);
+  });
+}
+
+// ---------- Category detail sorting ----------
+let categorySort = "date";
+function setCategorySort(mode) {
+  categorySort = mode;
+  document.querySelectorAll("#view-category-detail .sort-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.sort === mode));
+  if (currentCategoryDetail) openCategoryDetail(currentCategoryDetail, currentCategoryDetailYm);
+}
+
 function openCategoryDetail(category, selectedYm) {
   currentCategoryDetail = category;
   const todayYm = todayIso().slice(0, 7);
@@ -678,9 +749,10 @@ function openCategoryDetail(category, selectedYm) {
   const catTxns = allTxnsCache.filter((t) => t.category === category);
   // Both signs: credits belong to the category as much as debits do, and the
   // header shows the net so a settlement coming back is visible.
-  const monthTxns = catTxns
-    .filter((t) => monthKey(t.date) === ym)
-    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const monthTxns = catTxns.filter((t) => monthKey(t.date) === ym);
+  monthTxns.sort(categorySort === "value"
+    ? (a, b) => Math.abs(b.amount) - Math.abs(a.amount)      // biggest first
+    : (a, b) => (a.date < b.date ? 1 : -1));                 // newest first
   const net = monthTxns.reduce((s, t) => s + t.amount, 0);
 
   const iconEl = document.getElementById("category-detail-icon");
@@ -1238,6 +1310,10 @@ async function refreshAll() {
 }
 
 document.getElementById("refresh-btn").onclick = refreshAll;
+document.getElementById("category-menu-btn").onclick = openCategoryMenu;
+document.getElementById("category-menu-modal").onclick = (e) => {
+  if (e.target.id === "category-menu-modal") closeCategoryMenu();
+};
 
 // ---------- Back gesture / hardware back ----------
 window.addEventListener("popstate", (e) => {
