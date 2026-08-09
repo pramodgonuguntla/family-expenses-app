@@ -557,7 +557,16 @@ function renderTrendChart(container, txns, selectedYm, onSelect) {
   });
   const maxTrend = Math.max.apply(null, months.map((ym) => totalsByYm[ym]).concat([1]));
 
+  // With no spend at all, maxTrend falls back to 1 and every bar clamps to the
+  // 3px floor -- six stubs under a tall blank card. Show a message instead.
+  const grandTotal = months.reduce((s, ym) => s + totalsByYm[ym], 0);
   container.innerHTML = "";
+  container.classList.toggle("is-empty", grandTotal === 0);
+  if (grandTotal === 0) {
+    container.innerHTML = '<div class="trend-empty">No spend in the last 6 months</div>';
+    return;
+  }
+
   months.forEach((ym) => {
     const val = totalsByYm[ym];
     const barPx = Math.max(3, Math.round((val / maxTrend) * 82));
@@ -1084,6 +1093,61 @@ function openLoansDetail() {
 }
 
 // ---------- Boot ----------
+// ---------- Refresh ----------
+// Refetches server data and re-renders whichever view is active. Scroll position
+// is saved and restored because the re-render path runs showView(), which
+// deliberately scrolls to top on real navigation.
+async function refreshAll() {
+  const btn = document.getElementById("refresh-btn");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add("spinning");
+
+  const activeEl = document.querySelector(".view.active");
+  const activeId = activeEl ? activeEl.id : "view-accounts";
+  const scrollY = window.scrollY;
+
+  try {
+    await Promise.all([loadAccounts(), loadCategories(), loadInvestments(), loadLoans(), loadNetworth()]);
+
+    if (activeId === "view-transactions" || activeId === "view-category-detail") {
+      await loadAllTxns();
+    }
+
+    renderGroups();
+
+    if (activeId === "view-group-detail" && currentGroup) {
+      openGroupDetail(currentGroup);
+    } else if (activeId === "view-account-detail" && currentDetailAccount) {
+      // accountsCache holds fresh objects after loadAccounts(), so re-find by name
+      const fresh = accountsCache.filter((a) => a.name === currentDetailAccount.name)[0];
+      if (fresh) await openAccountDetail(fresh);
+    } else if (activeId === "view-transactions") {
+      renderActivity();
+    } else if (activeId === "view-category-detail" && currentCategoryDetail) {
+      openCategoryDetail(currentCategoryDetail, currentCategoryDetailYm);
+    } else if (activeId === "view-summary") {
+      renderSummary();
+    } else if (activeId === "view-investments-detail") {
+      openInvestmentsDetail();
+    } else if (activeId === "view-loans-detail") {
+      openLoansDetail();
+    }
+
+    updateNetWorthHero();
+    window.scrollTo(0, scrollY);
+    toast("Updated");
+  } catch (err) {
+    console.error(err);
+    toast("Refresh failed: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("spinning");
+  }
+}
+
+document.getElementById("refresh-btn").onclick = refreshAll;
+
 async function boot() {
   try {
     await Promise.all([loadAccounts(), loadCategories(), loadInvestments(), loadLoans(), loadNetworth()]);
