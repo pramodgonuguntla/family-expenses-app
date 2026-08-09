@@ -210,7 +210,7 @@ function fillCategorySelect() {
   const sel = document.getElementById("txn-category");
   sel.innerHTML = '<option value="">Uncategorized</option>';
   let lastGroup = null, og = null;
-  categoriesCache.forEach((c) => {
+  allCategories().forEach((c) => {
     if (c.group_name !== lastGroup) {
       og = document.createElement("optgroup");
       og.label = c.group_name;
@@ -447,6 +447,36 @@ function renderTxnRow(t, onChanged) {
 let currentCategoryTxn = null;
 let categoryPickerRefresh = null;
 
+// The Categories sheet only exists to record which GROUP a category belongs to
+// (that drives colour + section headers). It is not the source of truth for
+// what exists -- a category can arrive via import and never be registered,
+// which is how the picker ended up offering just one option. So: union the
+// registered list with everything actually in use, and park unregistered ones
+// under "Other" until they're given a group.
+const GROUP_ORDER = ["Monthly", "Investments", "Business", "Insurance", "Subscriptions",
+                     "Donations", "Income", "Transfer", "Other"];
+
+function allCategories() {
+  const out = categoriesCache.slice();
+  const have = {};
+  out.forEach((c) => { have[c.name] = true; });
+  const extra = [];
+  [allTxnsCache, currentDetailTxns].forEach((list) => {
+    (list || []).forEach((t) => {
+      const n = (t.category || "").trim();
+      if (n && n !== "Uncategorized" && !have[n] && extra.indexOf(n) === -1) extra.push(n);
+    });
+  });
+  extra.sort();
+  extra.forEach((n) => out.push({ name: n, group_name: "Other" }));
+  out.sort((a, b) => {
+    const ga = GROUP_ORDER.indexOf(a.group_name), gb = GROUP_ORDER.indexOf(b.group_name);
+    const oa = ga === -1 ? GROUP_ORDER.length : ga, ob = gb === -1 ? GROUP_ORDER.length : gb;
+    return oa !== ob ? oa - ob : a.name.localeCompare(b.name);
+  });
+  return out;
+}
+
 function openCategoryPicker(txn, onChanged) {
   currentCategoryTxn = txn;
   categoryPickerRefresh = onChanged;
@@ -462,7 +492,7 @@ function openCategoryPicker(txn, onChanged) {
   list.appendChild(noneBtn);
 
   let lastGroup = null;
-  categoriesCache.forEach((c) => {
+  allCategories().forEach((c) => {
     if (c.group_name !== lastGroup) {
       const lbl = document.createElement("div");
       lbl.className = "picker-group-label";
