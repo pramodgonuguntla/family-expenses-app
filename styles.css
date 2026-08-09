@@ -8,9 +8,9 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: #f4f5f8;
   color: #14161f;
-  /* Clears the bottom nav (76px) AND the FAB, which sits at bottom:88px and is
-     56px tall -- otherwise the last card in any list is unreachable under it. */
-  padding-bottom: 156px;
+  /* Clears the nav AND the FAB above it, both of which grow by the safe-area
+     inset. FAB top edge sits at inset + 74 + 58; +16 of breathing room. */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 148px);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -183,7 +183,11 @@ body.detail-mode .hero { display: none; }
 .trend-empty { font-size: 12.5px; color: #8a8f9c; font-weight: 600; text-align: center; }
 
 .fab {
-  position: fixed; right: 18px; bottom: 88px;
+  /* Anchored to the nav's real height, which is content + the safe-area inset.
+     A fixed 88px floated above the bar whenever that inset was 0 (Safari tab)
+     and sat flush only in the installed PWA. */
+  position: fixed; right: 18px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
   width: 58px; height: 58px; border-radius: 50%;
   background: #14161f; color: white; font-size: 28px; font-weight: 300; border: none;
   box-shadow: 0 8px 20px rgba(0,0,0,.28); z-index: 20;
