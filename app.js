@@ -224,10 +224,31 @@ function fillCategorySelect() {
 }
 
 // ---------- Nav / view switching ----------
-function showView(id) {
+// Drill-down screens that render their own dark header. The global hero is
+// hidden on these so there aren't two stacked gradient blocks.
+const DETAIL_VIEWS = [
+  "view-group-detail", "view-account-detail", "view-category-detail",
+  "view-investments-detail", "view-loans-detail",
+];
+
+// fromHistory=true means we're responding to a back gesture, so don't push a
+// new entry (that would trap the user in a loop).
+function showView(id, fromHistory) {
+  const activeNow = document.querySelector(".view.active");
+  const alreadyHere = activeNow && activeNow.id === id;
+
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === id));
+  document.body.classList.toggle("detail-mode", DETAIL_VIEWS.indexOf(id) !== -1);
+
+  // An installed PWA has no browser chrome, so without history entries there is
+  // nothing for swipe-back / Android back to pop. Skip the push when we're
+  // already on this view, otherwise a refresh re-render stacks duplicates.
+  if (!fromHistory && !alreadyHere) {
+    try { history.pushState({ view: id }, ""); } catch (err) { /* non-fatal */ }
+  }
+
   window.scrollTo(0, 0);
   updateNetWorthHero();
   if (id === "view-transactions") {
@@ -1147,6 +1168,14 @@ async function refreshAll() {
 }
 
 document.getElementById("refresh-btn").onclick = refreshAll;
+
+// ---------- Back gesture / hardware back ----------
+window.addEventListener("popstate", (e) => {
+  const id = (e.state && e.state.view) || "view-accounts";
+  if (document.getElementById(id)) showView(id, true);
+});
+// Seed the stack so the first back press has somewhere to land.
+try { history.replaceState({ view: "view-accounts" }, ""); } catch (err) { /* non-fatal */ }
 
 async function boot() {
   try {

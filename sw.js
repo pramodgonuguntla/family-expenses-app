@@ -8,7 +8,7 @@
 // were served forever and even a reload was intercepted. Network-first means
 // a deploy is picked up on the next open, and the cache is only a fallback
 // for when the device is actually offline.
-const CACHE = "expenses-shell-v2";
+const CACHE = "expenses-shell-v3";
 const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./config.js", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (e) => {
