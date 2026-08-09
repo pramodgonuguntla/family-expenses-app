@@ -1,4 +1,7 @@
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* touch-action: manipulation kills double-tap-to-zoom (and the 300ms tap delay)
+   while leaving deliberate pinch-zoom working. iOS has ignored user-scalable=no
+   since iOS 10, so the viewport meta tag can't do this. */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 html, body { min-height: 100%; }
 body {
   margin: 0;
@@ -173,7 +176,10 @@ body.detail-mode .hero { display: none; }
 
 .bottomnav {
   position: fixed; bottom: 0; left: 0; right: 0;
-  display: flex; background: rgba(255,255,255,.92); backdrop-filter: blur(12px);
+  /* Solid, not translucent+blurred: on iOS the backdrop-filter layer doesn't
+     extend into the safe-area padding, so the strip below the buttons rendered
+     a different shade and the bar looked like it was floating. */
+  display: flex; background: #ffffff;
   border-top: 1px solid #eaecf0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 10;
