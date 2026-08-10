@@ -798,6 +798,48 @@ function renderCategoryMenu(filter) {
 }
 
 // ---------- Category detail sorting ----------
+// Roll up same-named transactions within the month into one line -- a category
+// like Investment can hold a dozen "Mutual F" rows, and the total is usually
+// the interesting number rather than each instalment.
+let categoryAggregate = false;
+function toggleCategoryAggregate() {
+  categoryAggregate = !categoryAggregate;
+  document.getElementById("agg-btn").classList.toggle("active", categoryAggregate);
+  if (currentCategoryDetail) openCategoryDetail(currentCategoryDetail, currentCategoryDetailYm);
+}
+
+function aggregateTxns(txns) {
+  const byName = {};
+  const order = [];
+  txns.forEach((t) => {
+    const key = (t.details || "").trim().toLowerCase() || "(no detail)";
+    if (!byName[key]) {
+      byName[key] = { details: (t.details || "").trim() || "(no detail)", count: 0, amount: 0, date: t.date, category: t.category };
+      order.push(key);
+    }
+    const g = byName[key];
+    g.count++;
+    g.amount += t.amount;
+    if (t.date > g.date) g.date = t.date;   // latest date in the group
+  });
+  return order.map((k) => byName[k]);
+}
+
+function renderAggRow(g) {
+  const icon = catIcon(g.category);
+  const row = document.createElement("div");
+  row.className = "txn-row agg";
+  row.innerHTML = `
+    <div class="cat-icon" style="background:${icon.color}22">${icon.icon}</div>
+    <div class="text">
+      <div class="name">${g.details}<span class="agg-count">×${g.count}</span></div>
+      <div class="sub">${g.count} transaction${g.count === 1 ? "" : "s"} · latest ${g.date}</div>
+    </div>
+    <div class="amount ${g.amount >= 0 ? "pos" : "neg"}">${fmt(g.amount)}</div>
+  `;
+  return row;
+}
+
 let categorySort = "date";
 function setCategorySort(mode) {
   categorySort = mode;
@@ -835,8 +877,17 @@ function openCategoryDetail(category, selectedYm) {
 
   const list = document.getElementById("category-txn-list");
   list.innerHTML = "";
-  if (!monthTxns.length) list.innerHTML = `<div class="empty-state">No ${category} activity in ${monthLabelFromYm(ym)}.</div>`;
-  monthTxns.forEach((t) => list.appendChild(renderTxnRow(t, () => openCategoryDetail(category, ym))));
+  if (!monthTxns.length) {
+    list.innerHTML = `<div class="empty-state">No ${category} activity in ${monthLabelFromYm(ym)}.</div>`;
+  } else if (categoryAggregate) {
+    const groups = aggregateTxns(monthTxns);
+    groups.sort(categorySort === "value"
+      ? (a, b) => Math.abs(b.amount) - Math.abs(a.amount)
+      : (a, b) => (a.date < b.date ? 1 : -1));
+    groups.forEach((g) => list.appendChild(renderAggRow(g)));
+  } else {
+    monthTxns.forEach((t) => list.appendChild(renderTxnRow(t, () => openCategoryDetail(category, ym))));
+  }
 
   showView("view-category-detail");
 }

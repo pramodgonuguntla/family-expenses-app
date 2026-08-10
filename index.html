@@ -96,9 +96,14 @@
     <div id="category-trend" class="trend-chart"></div>
     <div class="section-head">
       <h2 id="category-txn-head">This month</h2>
-      <div class="sort-toggle">
-        <button type="button" class="sort-btn active" data-sort="date" onclick="setCategorySort('date')">Date</button>
-        <button type="button" class="sort-btn" data-sort="value" onclick="setCategorySort('value')">Value</button>
+      <div class="head-controls">
+        <div class="sort-toggle">
+          <button type="button" class="sort-btn active" data-sort="date" onclick="setCategorySort('date')">Date</button>
+          <button type="button" class="sort-btn" data-sort="value" onclick="setCategorySort('value')">Value</button>
+        </div>
+        <div class="sort-toggle">
+          <button type="button" class="sort-btn" id="agg-btn" onclick="toggleCategoryAggregate()">Σ Sum</button>
+        </div>
       </div>
     </div>
     <div id="category-txn-list" class="card-list"></div>
