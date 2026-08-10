@@ -342,7 +342,11 @@ function openGroupDetail(g) {
       <div class="avatar" style="background:${ACCOUNT_COLOR[a.type] || "#9aa0ac"}">${initials(a.name)}</div>
       <div class="text"><div class="name">${a.name}</div><div class="sub">${a.type}</div></div>
     `;
-    left.onclick = () => openAccountDetail(a);
+    // Whole card is the target, not just the avatar/name block -- the balance
+    // and the padding either side used to be dead space. The edit button stops
+    // propagation, so it still opens the edit modal rather than the account.
+    row.onclick = () => openAccountDetail(a);
+    row.classList.add("tappable");
     const amt = document.createElement("div");
     amt.className = "amount " + (a.balance < 0 ? "neg" : "pos");
     amt.textContent = fmt(a.balance);
