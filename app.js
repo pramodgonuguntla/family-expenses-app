@@ -683,7 +683,44 @@ function latestYmWithActivity(category) {
   return best;
 }
 
+// Every month that has data, newest first. The trend chart only reaches back
+// 6 months, so this is the only way to get to anything older.
+function monthsWithData() {
+  const counts = {};
+  allTxnsCache.forEach((t) => {
+    const ym = monthKey(t.date);
+    if (ym) counts[ym] = (counts[ym] || 0) + 1;
+  });
+  return Object.keys(counts).sort().reverse().map((ym) => ({ ym, count: counts[ym] }));
+}
+
+function renderMonthChips() {
+  const row = document.getElementById("month-chip-row");
+  row.innerHTML = "";
+  const months = monthsWithData();
+  if (!months.length) {
+    row.innerHTML = '<div class="empty-state" style="padding:8px">No data yet.</div>';
+    return;
+  }
+  const current = activitySelectedYm || todayIso().slice(0, 7);
+  months.forEach((m) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "month-chip" + (m.ym === current ? " active" : "");
+    btn.innerHTML = `${monthLabelFromYm(m.ym)}<span class="chip-sub">${m.count} txn${m.count === 1 ? "" : "s"}</span>`;
+    btn.onclick = () => {
+      closeCategoryMenu();
+      renderActivity(m.ym);
+      showView("view-transactions");
+    };
+    row.appendChild(btn);
+  });
+  const active = row.querySelector(".month-chip.active");
+  if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest", inline: "center" });
+}
+
 function openCategoryMenu() {
+  renderMonthChips();
   renderCategoryMenu("");
   const search = document.getElementById("category-menu-search");
   search.value = "";

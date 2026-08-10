@@ -73,6 +73,25 @@ body.detail-mode .hero { display: none; }
   font-size: 13.5px; margin-bottom: 10px;
 }
 .picker-item .picker-meta { margin-left: auto; font-size: 11.5px; color: #9aa0ac; font-weight: 600; }
+.menu-section-label {
+  font-size: 11px; font-weight: 700; color: #8a8f9c; text-transform: uppercase;
+  letter-spacing: .06em; margin: 2px 0 7px;
+}
+/* Horizontal scroll rather than a wrapped grid: months stay in one time-ordered
+   line, and the count grows every month. */
+.chip-row {
+  display: flex; gap: 7px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.chip-row::-webkit-scrollbar { display: none; }
+.month-chip {
+  flex-shrink: 0; background: white; border: 1px solid #e2e4ea; border-radius: 999px;
+  padding: 7px 13px; font-size: 12.5px; font-weight: 600; color: #14161f;
+  cursor: pointer; white-space: nowrap;
+}
+.month-chip .chip-sub { display: block; font-size: 10px; color: #9aa0ac; font-weight: 600; }
+.month-chip.active { background: #14161f; border-color: #14161f; color: white; }
+.month-chip.active .chip-sub { color: rgba(255,255,255,.6); }
 
 /* ---------- Group hero cards (Level 1) ---------- */
 .group-list { display: flex; flex-direction: column; gap: 10px; }
