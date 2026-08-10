@@ -43,6 +43,30 @@ const CATEGORY_GROUP_STYLE = {
   Uncategorized: { color: "#c2c5cc", icon: "❔" },
   Transfer: { color: "#6b7280", icon: "🔁" },
 };
+// Per-category icons. The group still supplies the colour (so sections stay
+// visually coherent), but the emoji is per category -- previously every
+// Monthly category rendered the same shopping trolley, which made the
+// category bars hard to scan.
+const CATEGORY_ICON = {
+  Food: "🍽️", Grocery: "🛒", Commute: "🚗", Travel: "✈️", Shopping: "🛍️",
+  Home: "🏠", Rent: "🏘️", "Rental Expense": "🔑", Mobile: "📱",
+  Entertainment: "🎬", Laundry: "🧺", Health: "🩺", School: "🎓",
+  Vehicle: "🚙", Beauty: "💇", "House Help": "🧹", Charges: "💳",
+  Misc: "📦", "Home Loan": "🏦", Maintenance: "🔧", Electricity: "💡",
+  Investment: "📈", Adwaith: "🏗️", Abhee: "🏗️", Insurance: "🛡️",
+  Subscription: "🔁", Radivon: "💼", Salary: "💰", Interest: "🪙",
+  Rewards: "🎁", Dividend: "🪙", Opening: "🏁", Settlement: "🤝",
+  Family: "👨‍👩‍👧", Tax: "🧾", Transfer: "🔄", "To Be Solved": "⚠️",
+  Uncategorized: "❔",
+  // Generic ones, registered but not yet used. They show in the picker so a
+  // category exists before its first transaction; the month grid is built from
+  // data, so an unused one costs nothing there.
+  Medicines: "💊", Donations: "❤️", Gifts: "🎀", Fitness: "🏋️", Pets: "🐾",
+  Utilities: "💡", Water: "💧", Gas: "🔥", Internet: "🌐", Clothing: "👕",
+  Electronics: "💻", Furniture: "🛋️", Festivals: "🎉", Childcare: "🧸",
+  Books: "📖", Parking: "🅿️", "Dining Out": "🍴", Fuel: "⛽", Repairs: "🔧",
+};
+
 const ACCOUNT_COLOR = { bank: "#4a86e8", wallet: "#16a765", card: "#8e63ce" };
 
 // Investment categories -- a starting set, not exhaustive; "Other" always covers the rest.
@@ -95,7 +119,9 @@ function toast(msg) {
 }
 function catIcon(categoryName) {
   const group = categoryGroup(categoryName);
-  return CATEGORY_GROUP_STYLE[group] || CATEGORY_GROUP_STYLE.Other;
+  const base = CATEGORY_GROUP_STYLE[group] || CATEGORY_GROUP_STYLE.Other;
+  const icon = CATEGORY_ICON[categoryName];
+  return icon ? { color: base.color, icon: icon } : base;
 }
 function categoryGroup(name) {
   if (!name) return "Uncategorized";
