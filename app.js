@@ -69,18 +69,37 @@ const CATEGORY_ICON = {
 
 const ACCOUNT_COLOR = { bank: "#4a86e8", wallet: "#16a765", card: "#8e63ce" };
 
-// Investment categories -- a starting set, not exhaustive; "Other" always covers the rest.
+// Investment categories -- a starting set, not exhaustive; "Other" always
+// covers the rest. Declaration order doubles as the section order on the
+// Investments screen, so market-linked assets sit above locked-in ones.
 const INVESTMENT_ICON = {
-  "Gold": { emoji: "🪙", color: "#d97706" },
-  "Real Estate": { emoji: "🏠", color: "#7c3aed" },
-  "PF": { emoji: "🏛️", color: "#0891b2" },
-  "NPS": { emoji: "📈", color: "#059669" },
-  "Stocks": { emoji: "📊", color: "#2563eb" },
+  "Equity": { emoji: "📊", color: "#2563eb" },
   "Mutual Funds": { emoji: "💹", color: "#dc2626" },
+  "Stocks": { emoji: "📊", color: "#2563eb" },
+  "ESOP": { emoji: "🎯", color: "#db2777" },
+  "RD": { emoji: "🏦", color: "#0ea5e9" },
+  "FD": { emoji: "🏦", color: "#0284c7" },
+  "NPS": { emoji: "📈", color: "#059669" },
+  "PF": { emoji: "🏛️", color: "#0891b2" },
+  "PPF": { emoji: "🏛️", color: "#0d9488" },
+  "Real Estate": { emoji: "🏠", color: "#7c3aed" },
+  "Gold": { emoji: "🪙", color: "#d97706" },
   "Other": { emoji: "💼", color: "#6b7280" },
 };
 const INVESTMENT_CATEGORIES = Object.keys(INVESTMENT_ICON);
 function investIcon(category) { return INVESTMENT_ICON[category] || INVESTMENT_ICON["Other"]; }
+
+// Owners are free text in the sheet. These are the defaults offered in the
+// picker; whatever is already in the data gets merged in, so a name typed
+// straight into the sheet still appears instead of silently vanishing.
+const DEFAULT_OWNERS = ["Pramod", "Shruthi", "Hanu", "Joint"];
+function ownerList() {
+  const fromData = investmentsCache.map(function (i) { return i.owner; }).filter(Boolean);
+  return Array.from(new Set(DEFAULT_OWNERS.concat(fromData)));
+}
+
+// Which owner the Investments screen is filtered to. "" means everyone.
+let investmentOwnerFilter = "";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -1061,11 +1080,24 @@ function fillInvestmentCategorySelect(selected) {
     sel.appendChild(opt);
   });
 }
+function fillInvestmentOwnerSelect(selected) {
+  const sel = document.getElementById("field-owner");
+  sel.innerHTML = "";
+  const owners = ownerList();
+  if (selected && owners.indexOf(selected) === -1) owners.push(selected);
+  owners.forEach(function (o) {
+    const opt = document.createElement("option");
+    opt.value = o; opt.textContent = o;
+    if (o === selected) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
 function setFieldVisible(id, visible) { document.getElementById(id).style.display = visible ? "flex" : "none"; }
 function resetModalFields() {
   setFieldVisible("field-name-wrap", false);
   setFieldVisible("field-type-wrap", false);
   setFieldVisible("field-group-wrap", false);
+  setFieldVisible("field-owner-wrap", false);
   setFieldVisible("field-category-wrap", false);
   setFieldVisible("field-value-wrap", false);
   document.getElementById("modal-delete-btn").style.display = "none";
@@ -1120,13 +1152,18 @@ function openNewInvestmentModal() {
   document.getElementById("field-value").value = "";
   document.getElementById("field-value-label").textContent = "Current value";
   setFieldVisible("field-name-wrap", true);
+  setFieldVisible("field-owner-wrap", true);
   setFieldVisible("field-category-wrap", true);
   setFieldVisible("field-value-wrap", true);
+  // Pre-select whichever owner is being filtered on -- adding from Shruthi's
+  // view almost always means adding one of hers.
+  fillInvestmentOwnerSelect(investmentOwnerFilter || DEFAULT_OWNERS[0]);
   fillInvestmentCategorySelect("Other");
   document.getElementById("edit-modal").classList.add("open");
 }
-function openEditInvestmentModal(name) {
-  const inv = investmentsCache.find((x) => x.name === name);
+// Takes a row id, not a name -- names are not unique in this sheet.
+function openEditInvestmentModal(id) {
+  const inv = investmentsCache.find(function (x) { return x.id === id; });
   if (!inv) return;
   modalMode = "edit-investment";
   modalTargetInvestment = inv.id;
@@ -1136,8 +1173,10 @@ function openEditInvestmentModal(name) {
   document.getElementById("field-value").value = inv.value;
   document.getElementById("field-value-label").textContent = "Current value";
   setFieldVisible("field-name-wrap", true);
+  setFieldVisible("field-owner-wrap", true);
   setFieldVisible("field-category-wrap", true);
   setFieldVisible("field-value-wrap", true);
+  fillInvestmentOwnerSelect(inv.owner);
   fillInvestmentCategorySelect(inv.category);
   document.getElementById("modal-delete-btn").style.display = "block";
   document.getElementById("edit-modal").classList.add("open");
@@ -1228,8 +1267,9 @@ document.getElementById("modal-form").addEventListener("submit", async (e) => {
     }
     if (modalMode === "new-investment") {
       const category = document.getElementById("field-category").value;
+      const owner = document.getElementById("field-owner").value;
       const value = Number(document.getElementById("field-value").value) || 0;
-      await apiPost("add_investment", { name, category, value });
+      await apiPost("add_investment", { name, owner, category, value });
       toast("Investment added: " + name);
       closeModal();
       await Promise.all([loadInvestments(), loadNetworth()]);
@@ -1239,8 +1279,9 @@ document.getElementById("modal-form").addEventListener("submit", async (e) => {
     }
     if (modalMode === "edit-investment") {
       const category = document.getElementById("field-category").value;
+      const owner = document.getElementById("field-owner").value;
       const value = Number(document.getElementById("field-value").value) || 0;
-      await apiPost("update_investment", { id: modalTargetInvestment, name, category, value });
+      await apiPost("update_investment", { id: modalTargetInvestment, name, owner, category, value });
       toast("Saved");
       closeModal();
       await Promise.all([loadInvestments(), loadNetworth()]);
@@ -1300,32 +1341,89 @@ function renderSummary() {
   updateNetWorthHero();
 }
 
+// Investments are grouped by category with a subtotal per section, and can be
+// filtered to one owner. Rows are keyed by id, not name -- names repeat across
+// people and categories ("Kite" for both of you, "ICICI" for RD, NPS and PPF),
+// so a name lookup would edit the wrong row.
 function openInvestmentsDetail() {
-  const total = investmentsCache.reduce((s, i) => s + i.value, 0);
+  const all = investmentsCache;
+  const owners = ownerList().filter(function (o) {
+    return all.some(function (i) { return i.owner === o; });
+  });
+  if (investmentOwnerFilter && owners.indexOf(investmentOwnerFilter) === -1) {
+    investmentOwnerFilter = "";
+  }
+  const shown = investmentOwnerFilter
+    ? all.filter(function (i) { return i.owner === investmentOwnerFilter; })
+    : all;
+
+  const total = shown.reduce(function (s, i) { return s + i.value; }, 0);
   const amtEl = document.getElementById("investments-detail-amount");
   amtEl.textContent = fmt(total);
   amtEl.className = "amount";
 
   const list = document.getElementById("investments-list");
   list.innerHTML = "";
-  if (!investmentsCache.length) list.innerHTML = '<div class="empty-state">No investments added yet.</div>';
-  investmentsCache.forEach((inv) => {
-    const icon = investIcon(inv.category);
-    const row = document.createElement("div");
-    row.className = "card";
-    const left = document.createElement("div");
-    left.className = "left";
-    left.style.cursor = "default";
-    left.innerHTML = `<div class="avatar" style="background:${icon.color}">${icon.emoji}</div><div class="text"><div class="name">${inv.name}</div><div class="sub">${inv.category}</div></div>`;
-    const amt = document.createElement("div");
-    amt.className = "amount pos";
-    amt.textContent = fmt(inv.value);
-    const editBtn = document.createElement("button");
-    editBtn.className = "edit-icon";
-    editBtn.textContent = "✎";
-    editBtn.onclick = () => openEditInvestmentModal(inv.name);
-    row.appendChild(left); row.appendChild(amt); row.appendChild(editBtn);
-    list.appendChild(row);
+
+  // Owner filter chips -- only worth showing once more than one owner exists.
+  if (owners.length > 1) {
+    const chips = document.createElement("div");
+    chips.className = "chip-row";
+    [""].concat(owners).forEach(function (o) {
+      const sum = (o ? all.filter(function (i) { return i.owner === o; }) : all)
+        .reduce(function (s, i) { return s + i.value; }, 0);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "month-chip" + (investmentOwnerFilter === o ? " active" : "");
+      chip.innerHTML = (o || "Everyone") + '<span class="chip-sub">' + fmt(sum) + "</span>";
+      chip.onclick = function () { investmentOwnerFilter = o; openInvestmentsDetail(); };
+      chips.appendChild(chip);
+    });
+    list.appendChild(chips);
+  }
+
+  if (!shown.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = all.length ? "Nothing here for this person." : "No investments added yet.";
+    list.appendChild(empty);
+  }
+
+  // Known categories first, in declaration order, then anything unrecognised.
+  const present = shown.map(function (i) { return i.category || "Other"; });
+  const ordered = INVESTMENT_CATEGORIES.filter(function (c) { return present.indexOf(c) !== -1; })
+    .concat(Array.from(new Set(present)).filter(function (c) { return INVESTMENT_CATEGORIES.indexOf(c) === -1; }));
+
+  ordered.forEach(function (cat) {
+    const rows = shown.filter(function (i) { return (i.category || "Other") === cat; });
+    if (!rows.length) return;
+    const sub = rows.reduce(function (s, i) { return s + i.value; }, 0);
+
+    const head = document.createElement("div");
+    head.className = "section-head";
+    head.innerHTML = "<h2>" + cat + "</h2><h2>" + fmt(sub) + "</h2>";
+    list.appendChild(head);
+
+    rows.forEach(function (inv) {
+      const icon = investIcon(inv.category);
+      const row = document.createElement("div");
+      row.className = "card";
+      const left = document.createElement("div");
+      left.className = "left";
+      left.style.cursor = "default";
+      left.innerHTML = '<div class="avatar" style="background:' + icon.color + '">' + icon.emoji +
+        '</div><div class="text"><div class="name">' + inv.name +
+        '</div><div class="sub">' + (inv.owner || "—") + "</div></div>";
+      const amt = document.createElement("div");
+      amt.className = "amount pos";
+      amt.textContent = fmt(inv.value);
+      const editBtn = document.createElement("button");
+      editBtn.className = "edit-icon";
+      editBtn.textContent = "✎";
+      editBtn.onclick = function () { openEditInvestmentModal(inv.id); };
+      row.appendChild(left); row.appendChild(amt); row.appendChild(editBtn);
+      list.appendChild(row);
+    });
   });
 
   const ghost = document.createElement("button");
