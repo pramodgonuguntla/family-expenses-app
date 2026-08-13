@@ -1449,24 +1449,21 @@ function openLoansDetail() {
     const left = document.createElement("div");
     left.className = "left";
     left.style.cursor = "default";
-    left.innerHTML = `<div class="avatar" style="background:#e0433d">🏦</div><div class="text"><div class="name">${loan.name}</div><div class="sub">Outstanding</div></div>`;
+    left.innerHTML = `<div class="avatar" style="background:#e0433d">🏦</div><div class="text"><div class="name">${loan.name}</div><div class="sub">${loan.entries != null ? loan.entries + " entries" : "Outstanding"}</div></div>`;
     const amt = document.createElement("div");
     amt.className = "amount neg";
     amt.textContent = fmt(-loan.outstanding);
-    const editBtn = document.createElement("button");
-    editBtn.className = "edit-icon";
-    editBtn.textContent = "✎";
-    editBtn.onclick = () => openEditLoanModal(loan.name);
-    row.appendChild(left); row.appendChild(amt); row.appendChild(editBtn);
+    row.appendChild(left); row.appendChild(amt);
     list.appendChild(row);
   });
 
-  const ghost = document.createElement("button");
-  ghost.type = "button";
-  ghost.className = "ghost-card";
-  ghost.innerHTML = '<span class="plus">+</span><span>New loan</span>';
-  ghost.onclick = openNewLoanModal;
-  list.appendChild(ghost);
+  // No edit or add controls: a loan's balance is the running sum of its
+  // transactions in the Loans sheet, so there is nothing here to type over.
+  // New loans mean adding a block to that sheet.
+  const note = document.createElement("div");
+  note.className = "empty-state";
+  note.textContent = "Balances are calculated from the Loans sheet.";
+  list.appendChild(note);
 
   showView("view-loans-detail");
 }
