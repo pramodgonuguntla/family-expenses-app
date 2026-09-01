@@ -238,6 +238,28 @@ async function loadLoans() { loansCache = await apiGet("loans"); }
 async function loadNetworth() { networthData = await apiGet("networth"); }
 async function loadAllTxns() { allTxnsCache = await apiGet("transactions", { limit: 5000 }); }
 
+// Everything the app needs at startup, in a single request. Loading these five
+// separately meant five round trips, each paying an Apps Script cold start, and
+// two of them repeated the same walk over every account block. Falls back to
+// the individual calls if the backend hasn't been redeployed yet.
+async function loadBootstrap() {
+  const d = await apiGet("bootstrap");
+  if (!d || !d.accounts) {
+    // Older deployment: 'bootstrap' is unknown to it and it answers with the
+    // health payload. Fall back to the five individual calls so the app still
+    // works if the frontend ships before the backend is redeployed.
+    await Promise.all([loadAccounts(), loadCategories(), loadInvestments(), loadLoans(), loadNetworth()]);
+    return;
+  }
+  accountsCache = d.accounts;
+  categoriesCache = d.categories || [];
+  investmentsCache = d.investments || [];
+  loansCache = d.loans || [];
+  if (d.networth) networthData = d.networth;
+  fillAccountSelects();
+  fillCategorySelect();
+}
+
 function fillAccountSelects() {
   ["txn-account", "txn-from-account", "txn-to-account"].forEach((id) => {
     const sel = document.getElementById(id);
@@ -1484,7 +1506,7 @@ async function refreshAll() {
   const scrollY = window.scrollY;
 
   try {
-    await Promise.all([loadAccounts(), loadCategories(), loadInvestments(), loadLoans(), loadNetworth()]);
+    await loadBootstrap();
 
     if (activeId === "view-transactions" || activeId === "view-category-detail") {
       await loadAllTxns();
@@ -1538,7 +1560,7 @@ try { history.replaceState({ view: "view-accounts" }, ""); } catch (err) { /* no
 
 async function boot() {
   try {
-    await Promise.all([loadAccounts(), loadCategories(), loadInvestments(), loadLoans(), loadNetworth()]);
+    await loadBootstrap();
     renderGroups();
   } catch (err) {
     console.error(err);
