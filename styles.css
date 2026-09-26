@@ -205,3 +205,22 @@ a.card.row { display: flex; }
 .catrow { color: var(--ink); }
 .add-top .seg button { padding: 0 9px; }
 .datebtn { flex: none; }
+
+/* signed month bars (category detail) */
+.dbars { display: flex; gap: 8px; align-items: stretch; }
+.dbars button { flex: 1; padding: 0; border: none; background: none; display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.dbars .v { font-family: var(--num); font-size: 11px; color: var(--sub); text-align: center; height: 18px; }
+.dbars .v.pos { color: var(--ok); } .dbars .v.negv { color: var(--neg); }
+.dbars .up { display: flex; align-items: flex-end; }
+.dbars .down { display: flex; align-items: flex-start; }
+.dbars .zero { height: 1px; background: var(--line); }
+.dbars i { display: block; width: 100%; opacity: 0.35; }
+.dbars .in { background: var(--ok); border-radius: 6px 6px 0 0; }
+.dbars .out { background: var(--neg); border-radius: 0 0 6px 6px; }
+.dbars .on i { opacity: 1; }
+.dbars .m { margin-top: 6px; font-size: 12px; color: var(--sub); text-align: center; }
+.dbars .on .m { color: var(--ink); font-weight: 700; }
+.legend { display: flex; gap: 16px; font-size: 12px; color: var(--sub); }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.legend .in { background: var(--ok); } .legend .out { background: var(--neg); }

@@ -220,14 +220,23 @@
   function pin() { try { return localStorage.getItem(PIN_KEY) || ""; } catch (e) { return ""; } }
   function apiGet(params) {
     var qs = new URLSearchParams(Object.assign({ pin: pin() }, params));
-    return fetch(API + "?" + qs.toString()).then(function (r) { return r.json(); }).then(checkAuth);
+    return fetch(API + "?" + qs.toString()).then(readJson).then(checkAuth);
   }
   function apiPost(action, payload) {
     return fetch(API, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },   // no CORS preflight against Apps Script
       body: JSON.stringify(Object.assign({ action: action, pin: pin() }, payload))
-    }).then(function (r) { return r.json(); }).then(checkAuth);
+    }).then(readJson).then(checkAuth);
+  }
+  // Google occasionally answers with an HTML error page instead of data (for
+  // a few seconds after a deploy, or a brief hiccup on their side). Flag it so
+  // callers retry quietly instead of showing "Unexpected token '<'".
+  function readJson(r) {
+    return r.text().then(function (txt) {
+      try { return JSON.parse(txt); }
+      catch (e) { var err = new Error("Google didn't answer properly"); err.transient = true; throw err; }
+    });
   }
   function checkAuth(data) {
     if (data && (data.error === "unauthorized" || data.error === "pin_not_configured")) {
@@ -237,7 +246,8 @@
     return data;
   }
 
-  function refresh(quiet) {
+  function refresh(quiet, attempt) {
+    attempt = attempt || 0;
     if (!API || !pin()) return;
     if (sync.refreshing) return;
     sync.refreshing = true; paintSync();
@@ -258,6 +268,7 @@
         if (err.message === "pin_not_configured") sync.fatal = "The PIN isn't set up on the Google side (Script Properties → ACCESS_PIN).";
         render(); return;
       }
+      if (err.transient && attempt < 2) { setTimeout(function () { refresh(quiet, attempt + 1); }, attempt ? 5000 : 2000); paintSync(); return; }
       if (err instanceof TypeError) sync.offline = true; else sync.error = err.message;
       if (!D) render(); else paintSync();
       if (!quiet && err.message && !(err instanceof TypeError)) toast("Couldn't refresh: " + err.message);
@@ -283,6 +294,8 @@
     }).catch(function (err) {
       sync.busy = false; op.inflight = false; saveQ();
       if (err.auth) { render(); return; }
+      // Safe to resend: the client_ref stops a duplicate row if it did go through.
+      if (err.transient) { paintSync(); scheduleFlush(3000); return; }
       sync.offline = true; paintSync();
       scheduleFlush(15000);
     });
