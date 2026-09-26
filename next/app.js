@@ -134,13 +134,21 @@
     var lastEntry = {};
     txns.forEach(function (t) { if (t.date && (!lastEntry[t.account] || t.date > lastEntry[t.account])) lastEntry[t.account] = t.date; });
     var inv = D && D.investments ? D.investments : [];
-    var loans = D && D.loans ? D.loans : [];
+    var loans = (D && D.loans ? D.loans : []).map(function (l) {
+      var bal = -(l.outstanding || 0) + (delta[l.name] || 0);
+      return Object.assign({}, l, { type: "loan", bucket: "Loans", balance: bal, outstanding: bal < 0 ? -bal : 0 });
+    });
+    var loanNames = {};
+    loans.forEach(function (l) { loanNames[l.name] = 1; });
     var bank = 0, cards = 0;
     accounts.forEach(function (a) { if (a.type === "card") cards += a.balance; else bank += a.balance; });
     var invTotal = inv.reduce(function (s, i) { return s + (i.value || 0); }, 0);
     var loanTotal = loans.reduce(function (s, l) { return s + (l.outstanding || 0); }, 0);
     memo = {
-      txns: txns, accounts: accounts, cats: cats, inv: inv, loans: loans, lastEntry: lastEntry,
+      txns: txns, accounts: accounts, loanNames: loanNames,
+      // Loan ledgers stay out of spending, except their Transfer rows: an EMI
+      // recorded as a transfer from the bank must still net to zero.
+      household: txns.filter(function (t) { return !loanNames[t.account] || catOf(t) === "Transfer"; }), cats: cats, inv: inv, loans: loans, lastEntry: lastEntry,
       bank: bank, cards: cards, invTotal: invTotal, loanTotal: loanTotal,
       net: bank + cards + invTotal - loanTotal
     };
@@ -151,7 +159,7 @@
   // NET; "spent" is the sum of categories that come out negative.
   function monthStats(ym) {
     var by = {}, cnt = {};
-    M().txns.forEach(function (t) {
+    M().household.forEach(function (t) {
       if (ymOf(t.date) !== ym) return;
       var c = catOf(t);
       by[c] = (by[c] || 0) + t.amount; cnt[c] = (cnt[c] || 0) + 1;
@@ -167,7 +175,7 @@
   }
   function health() {
     var transfer = 0, tbs = 0, tbsSum = 0, uncat = 0, uncatSum = 0;
-    M().txns.forEach(function (t) {
+    M().household.forEach(function (t) {
       var c = catOf(t);
       if (c === "Transfer") transfer += t.amount;
       if (c === "To Be Solved") { tbs++; tbsSum += t.amount; }
@@ -178,7 +186,7 @@
   function recentCutoff() { var d = new Date(); d.setDate(d.getDate() - 120); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
   function topCategories(kind, n) {
     var cut = recentCutoff(), c = {};
-    M().txns.forEach(function (t) {
+    M().household.forEach(function (t) {
       if (t.date < cut) return;
       var name = catOf(t); if (NOT_PICKABLE[name]) return;
       if (kind === "income" ? t.amount <= 0 : t.amount >= 0) return;
@@ -195,7 +203,7 @@
   }
   function topAccounts(n) {
     var cut = recentCutoff(), c = {};
-    M().txns.forEach(function (t) { if (t.date >= cut) c[t.account] = (c[t.account] || 0) + 1; });
+    M().household.forEach(function (t) { if (t.date >= cut && !M().loanNames[t.account]) c[t.account] = (c[t.account] || 0) + 1; });
     var names = M().accounts.map(function (a) { return a.name; });
     names.sort(function (a, b) { return (c[b] || 0) - (c[a] || 0); });
     return names.slice(0, n);
@@ -203,10 +211,10 @@
   function allCategoryNames() {
     var have = {};
     M().cats.forEach(function (c) { have[c.name] = 1; });
-    M().txns.forEach(function (t) { var c = catOf(t); if (c) have[c] = 1; });
+    M().household.forEach(function (t) { var c = catOf(t); if (c) have[c] = 1; });
     return Object.keys(have).sort(function (a, b) { return a.localeCompare(b); });
   }
-  function account(name) { return M().accounts.filter(function (a) { return a.name === name; })[0]; }
+  function account(name) { return M().accounts.concat(M().loans).filter(function (a) { return a.name === name; })[0]; }
 
   // ---------------------------------------------------------------- network
   function pin() { try { return localStorage.getItem(PIN_KEY) || ""; } catch (e) { return ""; } }
@@ -392,7 +400,7 @@
     var days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     var pct = prev.spent ? Math.round(st.spent / prev.spent * 100) : 0;
     var top = st.spend.slice(0, 4).map(function (c) { return "<span>" + esc(c.name) + "<b>" + fmt(-c.net).replace("−", "") + "</b></span>"; }).join("");
-    var recent = m.txns.slice(0, 5).map(txnRow).join("");
+    var recent = m.household.slice(0, 5).map(function (t) { return txnRow(t); }).join("");
     return '' +
       '<div class="greet"><div><div class="d">' + esc(dateLine) + '</div><div class="h">' + greet + ", " + (pg ? "Pramod" : "Shruthi") + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:10px"><button id="sync" class="sync" type="button" data-act="refresh"></button>' +
@@ -479,7 +487,7 @@
   function allCatsSheet(filter) {
     var ym = curYm(), st = monthStats(ym), f = (filter || "").toLowerCase();
     var last = {};
-    M().txns.forEach(function (t) { var c = catOf(t); if (!last[c] || t.date > last[c].date) last[c] = t; });
+    M().household.forEach(function (t) { var c = catOf(t); if (!last[c] || t.date > last[c].date) last[c] = t; });
     var names = allCategoryNames().filter(function (n) { return !f || n.toLowerCase().indexOf(f) !== -1; });
     var rows = names.map(function (n) {
       var v = st.by[n];
@@ -495,7 +503,7 @@
   // ---------------------------------------------------------------- category detail
   function categoryView(r) {
     var name = r.arg || "";
-    var all = M().txns.filter(function (t) { return catOf(t) === name; });
+    var all = M().household.filter(function (t) { return catOf(t) === name; });
     var cur = curYm();
     var ym = r.q.ym || ui.catYm;
     if (!ym) { ym = cur; if (!all.some(function (t) { return ymOf(t.date) === cur; }) && all.length) ym = ymOf(all[0].date); }
@@ -533,7 +541,7 @@
 
   // ---------------------------------------------------------------- fix categories
   function fixView() {
-    var list = M().txns.filter(isUncat);
+    var list = M().household.filter(isUncat);
     if (!ui.fixOpen && list[0]) ui.fixOpen = list[0].account + "#" + list[0].id;
     var choices = topCategories("spend", 8);
     var rows = list.map(function (t) {
@@ -552,7 +560,7 @@
   function accountsView(r) {
     if (r.q.tab) { ui.acctTab = r.q.tab; }
     var m = M(), tab = ui.acctTab;
-    var add = tab === "bank" ? '<button type="button" class="pill-btn" data-act="newacct">+ Add account</button>' : tab === "inv" ? '<button type="button" class="pill-btn" data-act="newinv">+ Add investment</button>' : "";
+    var add = tab === "bank" ? '<button type="button" class="pill-btn" data-act="newacct">+ Add account</button>' : tab === "inv" ? '<button type="button" class="pill-btn" data-act="newinv">+ Add investment</button>' : '<button type="button" class="pill-btn" data-act="newloan">+ Add loan</button>';
     var body = "";
     if (tab === "bank") {
       var groups = {}, order = GROUP_ORDER.slice();
@@ -581,12 +589,12 @@
     } else {
       body = m.loans.map(function (l) {
         var lp = l.last_payment;
-        return '<div class="card loan" style="margin-top:18px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:16px">' + esc(l.name) + '</b><span class="muted" style="font-size:13px">' + (l.entries || 0) + ' entries</span></div>' +
+        return '<a class="card loan" style="margin-top:18px;display:flex;color:var(--ink)" href="#/acct/' + encodeURIComponent(l.name) + '"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:16px">' + esc(l.name) + '</b><span class="muted" style="font-size:13px">' + (l.entries || 0) + ' entries ›</span></div>' +
           '<div><div class="muted" style="font-size:12px">Outstanding</div><div class="num neg" style="font-size:28px;font-weight:700">' + fmt(-l.outstanding) + "</div></div>" +
           (l.borrowed ? '<div class="bar"><i style="width:' + Math.max(0, Math.min(100, l.repaid_pct || 0)) + '%"></i></div><span class="muted" style="font-size:13px"><b style="color:var(--ink)">' + (l.repaid_pct || 0) + "% repaid</b> of " + fmt(l.borrowed) + " borrowed</span>" : "") +
-          '<div class="two"><div><span>Last payment</span><b>' + (lp ? fmt(lp.amount) : "—") + '</b></div><div><span>Paid on</span><b>' + (lp ? dayMon(lp.date) + " " + lp.date.slice(2, 4) : "—") + "</b></div></div></div>";
+          '<div class="two"><div><span>Last payment</span><b>' + (lp ? fmt(lp.amount) : "—") + '</b></div><div><span>Paid on</span><b>' + (lp ? dayMon(lp.date) + " " + lp.date.slice(2, 4) : "—") + "</b></div></div></a>";
       }).join("") || '<div class="empty">No loans in the Loans sheet</div>';
-      body += '<div class="muted" style="font-size:13px;padding:10px 20px">Read from the Loans sheet. Add repayments there.</div>';
+      body += '<div class="muted" style="font-size:13px;padding:10px 20px">Record an EMI as a Transfer from your bank account to the loan.</div>';
     }
     return '' +
       '<div class="head" style="align-items:flex-start"><div><h1>Accounts</h1><div class="sub">Net worth <b class="num" style="color:var(--ink)">' + fmt(m.net) + "</b></div></div>" + add + "</div>" +
@@ -614,14 +622,15 @@
           return '<button type="button" class="row" data-act="edit" data-acc="' + esc(t.account) + '" data-id="' + esc(t.id) + '"><span class="day"><b>' + (+String(t.date).slice(8, 10) || "") + "</b><span>" + (t.date ? MON[+t.date.slice(5, 7) - 1] : "") + '</span></span><span class="grow"><span class="t">' + esc(t.details || catOf(t)) + '</span><span class="s" style="color:var(--accent)">' + esc(catOf(t)) + '</span></span><span class="amt' + (t.amount > 0 ? " pos" : "") + '">' + fmtSigned(t.amount) + (t.pending ? '<small class="pending">Waiting to sync</small>' : "<small>Bal " + fmt(t.balance) + "</small>") + "</span></button>";
         }).join("") + "</div>" : "") + "</div>";
     }).join("");
-    var typeLabel = { bank: "Bank account", wallet: "Wallet", card: "Credit card" }[a.type] || a.type;
+    var typeLabel = { bank: "Bank account", wallet: "Wallet", card: "Credit card", loan: "Loan" }[a.type] || a.type;
+    var isLoanAcct = a.type === "loan";
     return '' +
-      '<div class="pad" style="padding-top:12px;display:flex;justify-content:space-between;align-items:center"><a class="back" href="#/accounts">' + icon("back") + 'Accounts</a><button type="button" class="pill-btn" data-act="editacct" data-name="' + esc(name) + '">Edit</button></div>' +
+      '<div class="pad" style="padding-top:12px;display:flex;justify-content:space-between;align-items:center"><a class="back" href="#/accounts' + (isLoanAcct ? "?tab=loans" : "") + '">' + icon("back") + 'Accounts</a>' + (isLoanAcct ? "" : '<button type="button" class="pill-btn" data-act="editacct" data-name="' + esc(name) + '">Edit</button>') + "</div>" +
       '<div class="card p" style="margin-top:8px;display:flex;flex-direction:column;gap:12px">' +
       '<div style="display:flex;align-items:center;gap:12px"><span class="av' + (a.type === "card" ? " cc" : a.type === "wallet" ? " wallet" : "") + '" style="width:44px;height:44px;font-size:14px">' + esc(initials(name)) + '</span><div><div style="font-size:20px;font-weight:700">' + esc(name) + '</div><div class="muted" style="font-size:13px">' + esc(typeLabel + " · " + (a.bucket || "Others")) + "</div></div></div>" +
       '<div><div class="muted" style="font-size:13px">Balance</div><div class="num' + (a.balance < 0 ? " neg" : "") + '" style="font-size:32px;font-weight:700">' + fmt(a.balance) + "</div></div>" +
       '<div class="two"><div><span>Out in ' + MON[+ym.slice(5, 7) - 1] + "</span><b>" + fmt(out) + '</b></div><div><span>In / credited</span><b class="pos">' + fmtSigned(inn) + "</b></div></div>" +
-      '<a class="btn small ghost" href="#/reconcile?acct=' + encodeURIComponent(name) + '" style="align-self:flex-start">Check balance</a></div>' +
+      (isLoanAcct ? '<a class="btn small ghost" href="#/add?transfer=1&to=' + encodeURIComponent(name) + '" style="align-self:flex-start">Record a repayment</a></div>' : '<a class="btn small ghost" href="#/reconcile?acct=' + encodeURIComponent(name) + '" style="align-self:flex-start">Check balance</a></div>') +
       '<div class="label">Entries by month<span style="text-transform:none;letter-spacing:0;font-weight:500;font-size:12px">Balance after each</span></div>' +
       '<div>' + (months || '<div class="empty">No entries yet</div>') + "</div>" +
       '<div class="pad" style="margin-top:16px"><a class="btn ghost" href="#/add?acct=' + encodeURIComponent(name) + '">' + icon("plus") + "Add entry to " + esc(name) + "</a></div>";
@@ -673,6 +682,7 @@
     var names = M().accounts.map(function (a) { return a.name; });
     if (!s.acc) s.acc = (r.q.acct && names.indexOf(r.q.acct) !== -1) ? r.q.acct : (P.lastAccount && names.indexOf(P.lastAccount) !== -1 ? P.lastAccount : names[0]);
     s.from = s.acc; s.to = names.filter(function (n) { return n !== s.acc; })[0];
+    if (r.q.transfer) { s.kind = "transfer"; if (r.q.to) s.to = r.q.to; if (s.from === s.to) s.from = names[0]; }
     ui.add = s; return s;
   }
   function amtLabel(s) {
@@ -695,12 +705,14 @@
     if (s.cat && cats.indexOf(s.cat) === -1) cats.unshift(s.cat);
     var accs = topAccounts(12);
     if (s.acc && accs.indexOf(s.acc) === -1) accs.unshift(s.acc);
+    var toList = accs.slice(0, 8);
+    if (s.to && toList.indexOf(s.to) === -1) toList.unshift(s.to);
     var accChips = function (field, list) {
       return '<div class="chips">' + list.map(function (n) { return '<button type="button" class="' + chip(s[field] === n) + '" data-act="pick" data-f="' + field + '" data-v="' + esc(n) + '">' + esc(n) + "</button>"; }).join("") +
         '<button type="button" class="chip more" data-act="acctpicker" data-f="' + field + '">All…</button></div>';
     };
     var middle = s.kind === "transfer"
-      ? '<div class="sec"><span class="k">From</span>' + accChips("from", accs.slice(0, 8)) + '</div><div style="display:flex;justify-content:center;padding-top:8px;color:var(--sub)">' + icon("down") + '</div><div class="sec" style="padding-top:0"><span class="k">To</span>' + accChips("to", accs.slice(0, 8)) + "</div>"
+      ? '<div class="sec"><span class="k">From</span>' + accChips("from", accs.slice(0, 8)) + '</div><div style="display:flex;justify-content:center;padding-top:8px;color:var(--sub)">' + icon("down") + '</div><div class="sec" style="padding-top:0"><span class="k">To</span>' + accChips("to", toList) + "</div>"
       : '<div class="sec"><span class="k">Category · your most used</span><div class="chips">' + cats.map(function (c) { return '<button type="button" class="' + chip(s.cat === c) + '" data-act="pick" data-f="cat" data-v="' + esc(c) + '">' + esc(c) + "</button>"; }).join("") +
         '<button type="button" class="chip more" data-act="catpicker" data-for="add">All…</button></div></div>' +
         '<div class="sec" style="padding-top:14px"><span class="k">Account · most used</span>' + accChips("acc", accs) + "</div>";
@@ -784,7 +796,7 @@
   }
   function acctPickerSheet(field) {
     return '<div class="sheet"><div class="sheet-h"><b>Pick an account</b><button type="button" class="icon-btn" data-act="closesheet" aria-label="Close">' + icon("close") + "</button></div>" +
-      '<div class="sheet-body"><div class="plain-list">' + M().accounts.map(function (a) { return '<button type="button" class="row" data-act="pickeracct" data-f="' + field + '" data-v="' + esc(a.name) + '"><span class="grow"><span class="t">' + esc(a.name) + '</span><span class="s">' + esc(a.bucket || "") + '</span></span><span class="amt">' + fmt(a.balance) + "</span></button>"; }).join("") + "</div></div></div>";
+      '<div class="sheet-body"><div class="plain-list">' + M().accounts.concat(field === "acc" ? [] : M().loans).map(function (a) { return '<button type="button" class="row" data-act="pickeracct" data-f="' + field + '" data-v="' + esc(a.name) + '"><span class="grow"><span class="t">' + esc(a.name) + '</span><span class="s">' + esc(a.bucket || "") + '</span></span><span class="amt">' + fmt(a.balance) + "</span></button>"; }).join("") + "</div></div></div>";
   }
   function formSheet(title, fields, submitAct, extra) {
     return '<div class="sheet"><div class="sheet-h"><b>' + esc(title) + '</b><button type="button" class="icon-btn" data-act="closesheet" aria-label="Close">' + icon("close") + "</button></div>" +
@@ -873,6 +885,20 @@
       openSheet(formSheet("Edit " + a.name, sel("f-type", "Type", ["bank", "wallet", "card"], a.type) + sel("f-group", "Group", groupsList(), a.bucket || "Others"), "updateacct"));
     },
     updateacct: function () { direct("update_account", { name: pickerCtx.acct, type: document.getElementById("f-type").value, bucket: document.getElementById("f-group").value }); },
+    newloan: function () {
+      openSheet(formSheet("New loan", inp("f-name", "Loan name", "") + inp("f-amt", "Amount borrowed (₹)", "", "number") + inp("f-date", "Date borrowed", todayIso(), "date"), "saveloan"));
+    },
+    saveloan: function () {
+      var n = document.getElementById("f-name").value.trim();
+      var amt = Math.abs(parseFloat(document.getElementById("f-amt").value) || 0);
+      var dt = document.getElementById("f-date").value || todayIso();
+      if (!n) { toast("Type a name"); return; }
+      if (account(n)) { toast("That name is already used"); return; }
+      direct("add_account", { name: n, type: "Loan", bucket: "Loans" }, function () {
+        if (amt) enqueue("add_transaction", { account: n, date: dt, details: "Disbursement", category: "Disbursement", amount: -amt });
+        ui.acctTab = "loans";
+      });
+    },
     newinv: function () { pickerCtx = { inv: null }; openSheet(invForm(null)); },
     editinv: function (el) { var i = M().inv.filter(function (x) { return String(x.id) === el.dataset.id; })[0]; if (!i) return; pickerCtx = { inv: i.id }; openSheet(invForm(i)); },
     saveinv: function () {
@@ -904,7 +930,7 @@
       enqueue("update_transaction", { account: t.account, id: t.id, date: t.date, details: t.details, category: cat, amount: t.amount });
     }
     ui.fixOpen = null;
-    var next = M().txns.filter(isUncat)[0];
+    var next = M().household.filter(isUncat)[0];
     if (next) ui.fixOpen = next.account + "#" + next.id;
     render();
   }
